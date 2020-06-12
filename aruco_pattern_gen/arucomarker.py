@@ -1,12 +1,12 @@
 import cairo,argparse,random
-
+import math
 #TEST: https://jcmellado.github.io/js-aruco/getusermedia/getusermedia.html
 #http://terpconnect.umd.edu/~jwelsh12/enes100/markergen.html
 #http://terpconnect.umd.edu/~jwelsh12/enes100/markers.js
 markers_opts = [[False,True,True,True,True],[False,True,False,False,False]
                    ,[True,False,True,True,False],[True,False,False,False,True]];
 import string
-digs = string.digits + string.letters
+digs = string.digits + string.ascii_letters
 
 def int2base(x, base):
   if x < 0: sign = -1
@@ -16,7 +16,7 @@ def int2base(x, base):
   digits = []
   while x:
     digits.append(digs[x % base])
-    x /= base
+    x = x // base
   if sign < 0:
     digits.append('-')
   digits.reverse()
@@ -75,6 +75,7 @@ if __name__ == '__main__':
     parser.add_argument('--cols', type=int,default=3,help="fill cols")
     parser.add_argument('--first', type=int,default=100,help="first id")
     parser.add_argument('--last', type=int,default=110,help="last id")
+    parser.add_argument('--charuco', action="store_true")
     parser.add_argument('--repeat', type=bool,default=False,help="repeat mode (ends at last)")
     parser.add_argument('--count', type=int,default=0,help="count (alternative to last)")
     parser.add_argument('--border', action='store_true',help="draws black border around")
@@ -83,6 +84,9 @@ if __name__ == '__main__':
     parser.add_argument('--random', action='store_true',help="randomize markers for board (and produces the randomization)")
     parser.add_argument('--output',default="output.pdf",help="outputfilename")
 
+    # charuco means
+    # - white border
+    # - skip one starting with black
 
     args = parser.parse_args()
 
@@ -98,10 +102,11 @@ if __name__ == '__main__':
     lw = 0.5 # mm
     lwdef = 0.5
     bordercolor = (0.5,0.5,0.5)
+    blankcolor = (0,0,0)
     if args.fill:
         args.cols = (page[0]-args.pagemargin*2)/(args.markersize+args.bordersize*2+args.spacing)
         args.rows = (page[1]-args.pagemargin*2)/(args.markersize+args.bordersize*2+args.spacing)
-        print "fill results in rows x cols",args.rows,args.cols
+        print ("fill results in rows x cols",args.rows,args.cols)
 
     bid = 0
 
@@ -114,6 +119,7 @@ if __name__ == '__main__':
     n = args.pages*args.rows*args.cols
     if args.count < n:
         n = args.count    
+    n = math.ceil(n)
     markers = [args.first+i for i in range(0,n)]
     if args.random:
         random.shuffle(markers)
@@ -129,40 +135,57 @@ if __name__ == '__main__':
             ctx.set_line_width(lwdef) # default
             ctx.stroke()
         y = args.pagemargin
+        xid = 0
         for r in range(0,args.rows):
             x = args.pagemargin    
             if done:
                 break
             for c in range(0,args.cols):
-                id = markers[bid % len(markers)]
+                if args.charuco:
+                    if xid % 2 == 0:
+                        # black rectangle
+                        id = -1
+                    else:
+                        id = markers[bid % len(markers)]
+                    xid = xid + 1
                 if not args.repeat and bid >= len(markers):
                     done = True
                     break
-                drawMarker(ctx,id,args.markersize,args.markersize,x + args.bordersize,y + args.bordersize)
-                bid = bid + 1
-                if args.border:
-                    ctx.set_source_rgb(*bordercolor)
-                    ctx.set_line_width(lw)
-                    ctx.rectangle(x,y,args.markersize + args.bordersize*2,args.markersize + args.bordersize*2)
+                if id != -1:
+                    bid = bid + 1
+                    drawMarker(ctx,id,args.markersize,args.markersize,x + args.bordersize,y + args.bordersize)
+                    if args.border:
+                        ctx.set_source_rgb(*bordercolor)
+                        ctx.set_line_width(lw)
+                        ctx.rectangle(x,y,args.markersize + args.bordersize*2,args.markersize + args.bordersize*2)
+                        ctx.set_line_width(lwdef) # default
+                        ctx.stroke()
+                    if args.axis:
+                        ctx.set_source_rgb(0, 0, 0)
+                        ctx.select_font_face("Arial", cairo.FONT_SLANT_NORMAL,         cairo.FONT_WEIGHT_NORMAL)
+                        (ax, ay, awidth, aheight, adx, ady) = ctx.text_extents("y>")
+                        ctx.move_to(x + args.markersize -ax/mm2pts+args.bordersize-awidth/mm2pts,y-aheight*0.4)
+                        ctx.show_text("y>")
+                        (ax, ay, awidth, aheight, adx, ady) = ctx.text_extents("y")
+                        ry0 = y +aheight*0.6 + args.markersize
+                        rx0 = x + -awidth*1.2
+                        ctx.move_to(rx0, ry0)
+                        #ctx.show_text("v")
+                        ry0 += aheight
+                        ctx.move_to(rx0, ry0)
+                        ctx.show_text("x")
+                        ry0 += aheight
+                        ctx.move_to(rx0, ry0)
+                        ctx.show_text("v")
+                else:
+                    ctx.set_source_rgb(*blankcolor)
+                    ctx.set_line_width(0) # default
+                    #ctx.rectangle(x,y,args.markersize + args.bordersize*2,args.markersize + args.bordersize*2)
+                    q = args.spacing/2
+                    ctx.rectangle(x-q ,y-q,args.markersize+ args.bordersize*2 +2*q,args.markersize+ args.bordersize*2+2*q)
+                    ctx.fill();
                     ctx.set_line_width(lwdef) # default
-                    ctx.stroke()
-                if args.axis:
-                    ctx.set_source_rgb(0, 0, 0)
-                    ctx.select_font_face("Arial", cairo.FONT_SLANT_NORMAL,         cairo.FONT_WEIGHT_NORMAL)
-                    (ax, ay, awidth, aheight, adx, ady) = ctx.text_extents("y>")
-                    ctx.move_to(x + args.markersize -ax/mm2pts+args.bordersize-awidth/mm2pts,y-aheight*0.4)
-                    ctx.show_text("y>")
-                    (ax, ay, awidth, aheight, adx, ady) = ctx.text_extents("y")
-                    ry0 = y +aheight*0.6 + args.markersize
-                    rx0 = x + -awidth*1.2
-                    ctx.move_to(rx0, ry0)
-                    #ctx.show_text("v")
-                    ry0 += aheight
-                    ctx.move_to(rx0, ry0)
-                    ctx.show_text("x")
-                    ry0 += aheight
-                    ctx.move_to(rx0, ry0)
-                    ctx.show_text("v")
+
                 x = x + args.bordersize*2+args.markersize + args.spacing
             y = y + args.markersize + args.bordersize*2 + args.spacing
         ctx.show_page()
